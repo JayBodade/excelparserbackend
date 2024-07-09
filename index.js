@@ -30,6 +30,7 @@ app.post('/uploadexcel', async (req, res) => {
         const response = await axios.get(url, {
             responseType: 'arraybuffer'
         });
+        if(response.data.length > 0){
         const workbook = xlsx.read(response.data, { type: 'buffer' });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
@@ -75,7 +76,7 @@ app.post('/uploadexcel', async (req, res) => {
             }
     
            responseData[parser.tableData?.name] = table;
-    
+           
             // Process summary data
             const summaryRowIndex = findRow(parser.summary.text, parseInt(parser.summary.colnumber) - 1, parserData);
             console.log(summaryRowIndex);
@@ -96,6 +97,9 @@ app.post('/uploadexcel', async (req, res) => {
         } else {
             return res.json({ success: false, message: "Error in parsing excel file" });
         }
+    }else{
+        return res.json({success:false,message:"File is Empty"});
+    }
     } catch (error) {
         console.error("Error processing Excel file:", error);
         return res.status(500).json({ error: 'Failed to process Excel file' });
