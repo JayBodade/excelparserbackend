@@ -74,7 +74,7 @@ app.post('/uploadexcel', async (req, res) => {
                 console.log("Invalid table row or column numbers");
             }
     
-            responseData.table = table;
+           responseData[parser.tableData?.name] = table;
     
             // Process summary data
             const summaryRowIndex = findRow(parser.summary.text, parseInt(parser.summary.colnumber) - 1, parserData);
