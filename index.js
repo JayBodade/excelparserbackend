@@ -168,7 +168,7 @@ app.post('/uploadpdf',async(req,res)=>{
     let {url,template_Id} = req.body;
     let document = await client.fetchDocumentFromURL(template_Id,url,{remote_id: 'test'})
     
-    if(document.id){
+    if(document?.id){
        let maxtries = 10;
        let retrySeconds = 2000;
        let parsedData = null;
