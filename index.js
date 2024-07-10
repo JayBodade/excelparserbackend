@@ -166,40 +166,39 @@ app.post('/addtemplate', async (req, res) => {
 })
 
 app.post('/uploadpdf', async (req, res) => {
-
+    let document = null;
     try {
         let { url, template_Id } = req.body;
-        let document = await client.fetchDocumentFromURL(template_Id, url, { remote_id: 'test' })
-        console.log("this is document",document);
-        if (document?.id) {
-            let maxtries = 10;
-            let retrySeconds = 2000;
-            let parsedData = null;
-            let retries = 0;
-
-            while (retries < maxtries && !parsedData) {
-                parsedData = await checkFileParsed(template_Id, document.id);
-                if (!parsedData) {
-                    retries++;
-                    await new Promise(resolve => setTimeout(resolve, retrySeconds));
-                }
-
-            }
-
-            if (parsedData) {
-                return res.json({ success: true, parsedData });
-            } else {
-                return res.json({ success: false, message: 'File processing timed out.' });
-            }
-
-
+         document = await client.fetchDocumentFromURL(template_Id, url, { remote_id: 'test' })
+        if (document) {
+            let parsedData = await client.getResultsByDocument(template_Id, document.id, { format: 'object' })
+            return res.json({success:true,isPending:false,parsedData});
         } else {
             return res.json({ success: false, message: "Something went wrong while uploading document" });
         }
     } catch (e) {
-        return res.json({ success: false, message: e.message });
+       if(e.statusCode == 400){
+        return res.json({success:true,isPending:true,message:"File is generated but not processed yet !!!",document_Id:document.id})
+       }else{
+        return res.json({ success: false, message: e });
+       }
     }
+})
 
+app.post('/getparseddata',async(req,res)=>{
+   
+    try{
+        let {document_Id,template_Id} = req.body;
+        let parsedData = await client.getResultsByDocument(template_Id, document_Id, { format: 'object' })
+        if(parsedData){
+            return res.json({success:true,parsedData});
+        }else{
+            return res.json({success:false,message:'error while parsing data'});
+        }
+        
+    }catch(e){
+            return res.json({success:false,message:e.message});
+    }
 
 })
 
@@ -215,12 +214,13 @@ app.get('/alltemplates', async (req, res) => {
 app.put('/updatetemplate', async (req, res) => {
 
     try {
+        console.log(req.body);
         let { data } = req.body;
         let { template_Id } = req.query;
         if (data) {
             let updatedStatus = await TemplateModel.findByIdAndUpdate({ _id: template_Id }, data);
 
-            return res.json({ success: true, message: "template updated successfully" });
+            return res.json({ success: true,message: "template updated successfully" });
         } else {
             return res.json({ success: false, message: 'Body Not Found' });
         }
