@@ -16,11 +16,11 @@ app.use(cors());
 app.use(express.json());
 var client = new docparser.Client(process.env.DOCPARSER_API);
 
-function authUser(){
-    client.ping().then((data)=>{
+function authUser() {
+    client.ping().then((data) => {
         console.log('authentication succeeded!');
-    }).catch((e)=>{
-        console.log('authentication failed!',e)
+    }).catch((e) => {
+        console.log('authentication failed!', e)
     })
 }
 
@@ -35,82 +35,85 @@ app.post('/uploadexcel', async (req, res) => {
     try {
 
         const { url, template_Id } = req.body;
-        
-        let parser = await TemplateModel.findOne({templateId:template_Id});
-        console.log("this is parse",parser);
-        const response = await axios.get(url, {
-            responseType: 'arraybuffer'
-        });
-        if(response.data.length > 0){
-        const workbook = xlsx.read(response.data, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const newWorkbook = xlsx.utils.book_new();
-        xlsx.utils.book_append_sheet(newWorkbook, sheet, sheetName);
-        const filePath = 'new.xlsx';
-        xlsx.writeFile(newWorkbook, filePath);
-        const parserData = await readXlsxFile(fs.createReadStream(filePath));
-        let responseData = {};
-        if (parserData) {
-            
-            const responseData = {};
-        
-            (parser.fieldData || []).forEach((ele) => {
-                if (ele.name && ele.row && ele.col) {
-                    const rowIndex = parseInt(ele.row) - 1;
-                    const colIndex = parseInt(ele.col) - 1;
-    
-                    if (parserData[rowIndex] && parserData[rowIndex][colIndex] !== undefined) {
-                        responseData[ele.name] = parserData[rowIndex][colIndex];
-                    } else {
-                        console.log(`Invalid field data at row ${rowIndex + 1}, col ${colIndex + 1}`);
-                    }
-                } else {
-                    console.log(`Invalid field data: ${JSON.stringify(ele)}`);
-                }
+
+        let parser = await TemplateModel.findOne({ templateId: template_Id });
+        if (parser) {
+            const response = await axios.get(url, {
+                responseType: 'arraybuffer'
             });
-    
-          
-            const tableRow = parseInt(parser.tableData?.row);
-            const tableCols = parseInt(parser.tableData?.col);
-            let table = [];
-            let tableheaders = [];
-    
-            if (!isNaN(tableRow) && !isNaN(tableCols) && tableRow > 0 && tableCols > 0) {
-                for (let i = tableRow - 1; i < parserData.length; i++) {
-                    if (checkifFullRowisNull(parserData[i])) break;
-                    table.push(parserData[i]);
+            if (response.data.length > 0) {
+                const workbook = xlsx.read(response.data, { type: 'buffer' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const newWorkbook = xlsx.utils.book_new();
+                xlsx.utils.book_append_sheet(newWorkbook, sheet, sheetName);
+                const filePath = 'new.xlsx';
+                xlsx.writeFile(newWorkbook, filePath);
+                const parserData = await readXlsxFile(fs.createReadStream(filePath));
+                let responseData = {};
+                if (parserData) {
+
+                    const responseData = {};
+
+                    (parser.fieldData || []).forEach((ele) => {
+                        if (ele.name && ele.row && ele.col) {
+                            const rowIndex = parseInt(ele.row) - 1;
+                            const colIndex = parseInt(ele.col) - 1;
+
+                            if (parserData[rowIndex] && parserData[rowIndex][colIndex] !== undefined) {
+                                responseData[ele.name] = parserData[rowIndex][colIndex];
+                            } else {
+                                console.log(`Invalid field data at row ${rowIndex + 1}, col ${colIndex + 1}`);
+                            }
+                        } else {
+                            console.log(`Invalid field data: ${JSON.stringify(ele)}`);
+                        }
+                    });
+
+
+                    const tableRow = parseInt(parser.tableData?.row);
+                    const tableCols = parseInt(parser.tableData?.col);
+                    let table = [];
+                    let tableheaders = [];
+
+                    if (!isNaN(tableRow) && !isNaN(tableCols) && tableRow > 0 && tableCols > 0) {
+                        for (let i = tableRow - 1; i < parserData.length; i++) {
+                            if (checkifFullRowisNull(parserData[i])) break;
+                            table.push(parserData[i]);
+                        }
+                        tableheaders = parserData[tableRow - 1] || [];
+                    } else {
+                        console.log("Invalid table row or column numbers");
+                    }
+
+                    responseData[parser.tableData?.name] = table;
+
+                    const summaryRowIndex = findRow(parser.summary.text, parseInt(parser.summary.colnumber) - 1, parserData);
+                    console.log(summaryRowIndex);
+                    const resummary = {};
+
+                    if (summaryRowIndex >= 0) {
+                        const totalRow = parserData[summaryRowIndex];
+                        tableheaders.forEach((element, index) => {
+                            resummary[element] = totalRow[index] === parser.summary.text ? '-' : totalRow[index];
+                        });
+                    } else {
+                        console.warn("Summary row not found");
+                    }
+
+                    responseData.resummary = resummary;
+                    return res.json({ success: true, responseData });
+
+                } else {
+                    return res.json({ success: false, message: "Error in parsing excel file" });
                 }
-                tableheaders = parserData[tableRow - 1] || [];
+
             } else {
-                console.log("Invalid table row or column numbers");
+                return res.json({ success: false, message: "File is Empty" });
             }
-    
-           responseData[parser.tableData?.name] = table;
-           
-            // Process summary data
-            const summaryRowIndex = findRow(parser.summary.text, parseInt(parser.summary.colnumber) - 1, parserData);
-            console.log(summaryRowIndex);
-            const resummary = {};
-    
-            if (summaryRowIndex >= 0) {
-                const totalRow = parserData[summaryRowIndex];
-                tableheaders.forEach((element, index) => {
-                    resummary[element] = totalRow[index] === parser.summary.text ? '-' : totalRow[index];
-                });
-            } else {
-                console.warn("Summary row not found");
-            }
-    
-            responseData.resummary = resummary;
-            return res.json({ success: true, responseData });
-    
         } else {
-            return res.json({ success: false, message: "Error in parsing excel file" });
+            return res.json({ success: false, message: "Parser Not Found Invalid Parser Id" });
         }
-    }else{
-        return res.json({success:false,message:"File is Empty"});
-    }
     } catch (error) {
         console.error("Error processing Excel file:", error);
         return res.status(500).json({ error: 'Failed to process Excel file' });
@@ -129,7 +132,7 @@ function checkifFullRowisNull(arr) {
 }
 
 function findRow(text, col, arr) {
-     
+
     for (let i = 0; i < arr.length; i++) {
         if (arr[i][col] == text) {
             return i;
@@ -145,7 +148,7 @@ app.post('/addtemplate', async (req, res) => {
         console.log(req.body);
         const { data } = req.body;
         if (data) {
-            data.templateId = data.templateName+'_'+generateRandomString(12);
+            data.templateId = data.templateName + '_' + generateRandomString(12);
             let template = await TemplateModel.create(data);
             if (template) {
                 return res.json({ success: true, message: 'Template Created Successfully', template });
@@ -162,62 +165,62 @@ app.post('/addtemplate', async (req, res) => {
 
 })
 
-app.post('/uploadpdf',async(req,res)=>{
+app.post('/uploadpdf', async (req, res) => {
 
-    try{
-    let {url,template_Id} = req.body;
-    let document = await client.fetchDocumentFromURL(template_Id,url,{remote_id: 'test'})
-    
-    if(document?.id){
-       let maxtries = 10;
-       let retrySeconds = 2000;
-       let parsedData = null;
-       let retries = 0;
+    try {
+        let { url, template_Id } = req.body;
+        let document = await client.fetchDocumentFromURL(template_Id, url, { remote_id: 'test' })
+        console.log("this is document",document);
+        if (document?.id) {
+            let maxtries = 10;
+            let retrySeconds = 2000;
+            let parsedData = null;
+            let retries = 0;
 
-       while(retries<maxtries && !parsedData){
-         parsedData = await checkFileParsed(template_Id,document.id);
-         if(!parsedData){
-            retries++;
-            await new  Promise(resolve => setTimeout(resolve, retrySeconds));
-         }
+            while (retries < maxtries && !parsedData) {
+                parsedData = await checkFileParsed(template_Id, document.id);
+                if (!parsedData) {
+                    retries++;
+                    await new Promise(resolve => setTimeout(resolve, retrySeconds));
+                }
 
-       }
-       
-       if (parsedData) {
-        return res.json({ success: true, parsedData });
-      } else {
-        return res.json({ success: false, message: 'File processing timed out.' });
-      }
+            }
 
-       
-    }else{
-        return res.json({success:false,message:"Something went wrong while uploading document"});
-    }
-    }catch(e){
-        return res.json({success:false,message:e.message});
+            if (parsedData) {
+                return res.json({ success: true, parsedData });
+            } else {
+                return res.json({ success: false, message: 'File processing timed out.' });
+            }
+
+
+        } else {
+            return res.json({ success: false, message: "Something went wrong while uploading document" });
+        }
+    } catch (e) {
+        return res.json({ success: false, message: e.message });
     }
 
 
 })
 
-app.get('/alltemplates',async(req,res)=>{
-    try{
+app.get('/alltemplates', async (req, res) => {
+    try {
         let all_templates = await TemplateModel.find();
-        return res.json({success:true,all_templates});
-    }catch(e){
-        return res.json({success:false,message:e.message});
+        return res.json({ success: true, all_templates });
+    } catch (e) {
+        return res.json({ success: false, message: e.message });
     }
 })
 
 app.put('/updatetemplate', async (req, res) => {
-   
+
     try {
         let { data } = req.body;
-        let {template_Id} = req.query;
+        let { template_Id } = req.query;
         if (data) {
-            let updatedStatus = await TemplateModel.findByIdAndUpdate({_id:template_Id},data);
-            
-            return res.json({success:true,message:"template updated successfully"});
+            let updatedStatus = await TemplateModel.findByIdAndUpdate({ _id: template_Id }, data);
+
+            return res.json({ success: true, message: "template updated successfully" });
         } else {
             return res.json({ success: false, message: 'Body Not Found' });
         }
@@ -238,21 +241,21 @@ app.delete('/deletetemplate', async (req, res) => {
     }
 })
 
-app.get('/getParsers',async (req,res)=>{
-    try{
-       let parsers = await client.getParsers();
-        return res.json({success:true,parsers});
-    }catch(e){
-        return res.json({success:false,message:e.message});
+app.get('/getParsers', async (req, res) => {
+    try {
+        let parsers = await client.getParsers();
+        return res.json({ success: true, parsers });
+    } catch (e) {
+        return res.json({ success: false, message: e.message });
     }
 })
 
 
-async function checkFileParsed(parser_id,docId){
-    try{
-        let parsedData = await client.getResultsByDocument(parser_id,docId,{format:'object'})
+async function checkFileParsed(parser_id, docId) {
+    try {
+        let parsedData = await client.getResultsByDocument(parser_id, docId, { format: 'object' })
         return parsedData;
-    }catch(e){
+    } catch (e) {
         console.log("File is not parsed yet");
         return null;
     }
@@ -262,14 +265,14 @@ function generateRandomString(length) {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
     for (let i = 0; i < length; i++) {
-      const randomIndex = Math.floor(Math.random() * characters.length);
-      result += characters[randomIndex];
+        const randomIndex = Math.floor(Math.random() * characters.length);
+        result += characters[randomIndex];
     }
     return result;
-  }
+}
 
 
-  
+
 
 // http://localhost:3000/deletetemplate?id=123
 app.delete('/delete', (req, res) => {
