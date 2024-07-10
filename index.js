@@ -4,14 +4,25 @@ const xlsx = require('xlsx');
 const axios = require('axios');
 const fs = require('fs');
 const morgan = require('morgan');
+const docparser = require('docparser-node');
 const readXlsxFile = require('read-excel-file/node');
 const connectToDb = require('./database/init');
 const TemplateModel = require('./database/model/teamplate');
 const cors = require('cors');
+require('dotenv').config();
 
 app.use(morgan('dev'));
 app.use(cors());
 app.use(express.json());
+var client = new docparser.Client(process.env.DOCPARSER_API);
+
+function authUser(){
+    client.ping().then((data)=>{
+        console.log('authentication succeeded!');
+    }).catch((e)=>{
+        console.log('authentication failed!',e)
+    })
+}
 
 const PORT = 3000;
 
@@ -151,6 +162,44 @@ app.post('/addtemplate', async (req, res) => {
 
 })
 
+app.post('/uploadpdf',async(req,res)=>{
+
+    try{
+    let {url,template_Id} = req.body;
+    let document = await client.fetchDocumentFromURL(template_Id,url,{remote_id: 'test'})
+    
+    if(document.id){
+       let maxtries = 10;
+       let retrySeconds = 2000;
+       let parsedData = null;
+       let retries = 0;
+
+       while(retries<maxtries && !parsedData){
+         parsedData = await checkFileParsed(template_Id,document.id);
+         if(!parsedData){
+            retries++;
+            await new  Promise(resolve => setTimeout(resolve, retrySeconds));
+         }
+
+       }
+       
+       if (parsedData) {
+        return res.json({ success: true, parsedData });
+      } else {
+        return res.json({ success: false, message: 'File processing timed out.' });
+      }
+
+       
+    }else{
+        return res.json({success:false,message:"Something went wrong while uploading document"});
+    }
+    }catch(e){
+        return res.json({success:false,message:e.message});
+    }
+
+
+})
+
 app.get('/alltemplates',async(req,res)=>{
     try{
         let all_templates = await TemplateModel.find();
@@ -189,6 +238,26 @@ app.delete('/deletetemplate', async (req, res) => {
     }
 })
 
+app.get('/getParsers',async (req,res)=>{
+    try{
+       let parsers = await client.getParsers();
+        return res.json({success:true,parsers});
+    }catch(e){
+        return res.json({success:false,message:e.message});
+    }
+})
+
+
+async function checkFileParsed(parser_id,docId){
+    try{
+        let parsedData = await client.getResultsByDocument(parser_id,docId,{format:'object'})
+        return parsedData;
+    }catch(e){
+        console.log("File is not parsed yet");
+        return null;
+    }
+}
+
 function generateRandomString(length) {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     let result = '';
@@ -198,6 +267,8 @@ function generateRandomString(length) {
     }
     return result;
   }
+
+
   
 
 // http://localhost:3000/deletetemplate?id=123
@@ -208,4 +279,5 @@ app.delete('/delete', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
     connectToDb();
+    authUser();
 });
