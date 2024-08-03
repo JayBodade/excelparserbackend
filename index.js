@@ -32,109 +32,109 @@ app.get('/', (req, res) => {
     return res.status(200).json("welcome to excel parser backend");
 });
 
-
 app.post('/uploadexcel', async (req, res) => {
+
     try {
+
         const { url, template_Id } = req.body;
-        console.log(url,template_Id);
-        if (!url || !template_Id) {
-            return res.status(400).json({ success: false, message: "Missing URL or template ID" });
-        }
 
         let parser = await TemplateModel.findOne({ templateId: template_Id });
-        if (!parser) {
-            return res.status(404).json({ success: false, message: "Parser not found with the given ID" });
-        }
-
-        const response = await axios.get(url, {
-            responseType: 'arraybuffer'
-        });
-
-        if (response.data.length === 0) {
-            return res.status(400).json({ success: false, message: "File is empty" });
-        }
-
-        const workbook = xlsx.read(response.data, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const newWorkbook = xlsx.utils.book_new();
-        xlsx.utils.book_append_sheet(newWorkbook, sheet, sheetName);
-        const filePath = `file${fileCounter}.xlsx`;
-        xlsx.writeFile(newWorkbook, filePath);
-        const parserData = await readXlsxFile(fs.createReadStream(filePath));
-        let responseData = {};
-
-        if (parserData) {
-            (parser.fieldData || []).forEach((ele) => {
-                if (ele.name && ele.row && ele.col) {
-                    const rowIndex = parseInt(ele.row) - 1;
-                    const colIndex = parseInt(ele.col) - 1;
-
-                    if (parserData[rowIndex] && parserData[rowIndex][colIndex] !== undefined) {
-                        responseData[ele.name] = parserData[rowIndex][colIndex];
-                    } else {
-                        console.log(`Invalid field data at row ${rowIndex + 1}, col ${colIndex + 1}`);
-                    }
-                } else {
-                    console.log(`Invalid field data: ${JSON.stringify(ele)}`);
-                }
+        if (parser) {
+            const response = await axios.get(url, {
+                responseType: 'arraybuffer'
             });
+            if (response.data.length > 0) {
+                const workbook = xlsx.read(response.data, { type: 'buffer' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const newWorkbook = xlsx.utils.book_new();
+                xlsx.utils.book_append_sheet(newWorkbook, sheet, sheetName);
+                const filePath = `file${fileCounter}.xlsx`;
+                xlsx.writeFile(newWorkbook, filePath);
+                const parserData = await readXlsxFile(fs.createReadStream(filePath));
+                let responseData = {};
+                if (parserData) {
 
-            const tableRow = parseInt(parser.tableData?.row);
-            const tableCols = parseInt(parser.tableData?.col);
-            let table = [];
-            let tableheaders = [];
+                    const responseData = {};
 
-            if (!isNaN(tableRow) && !isNaN(tableCols) && tableRow > 0 && tableCols > 0) {
-                for (let i = tableRow - 1; i < parserData.length; i++) {
-                    if (checkifFullRowisNull(parserData[i])) break;
-                    table.push(parserData[i]);
-                }
-                tableheaders = parserData[tableRow - 1] || [];
-            } else {
-                console.log("Invalid table row or column numbers");
-            }
+                    (parser.fieldData || []).forEach((ele) => {
+                        if (ele.name && ele.row && ele.col) {
+                            const rowIndex = parseInt(ele.row) - 1;
+                            const colIndex = parseInt(ele.col) - 1;
 
-            responseData[parser.tableData?.name] = table;
+                            if (parserData[rowIndex] && parserData[rowIndex][colIndex] !== undefined) {
+                                responseData[ele.name] = parserData[rowIndex][colIndex];
+                            } else {
+                                console.log(`Invalid field data at row ${rowIndex + 1}, col ${colIndex + 1}`);
+                            }
+                        } else {
+                            console.log(`Invalid field data: ${JSON.stringify(ele)}`);
+                        }
+                    });
 
-            const summaryRowIndex = findRow(parser.summary.text, parseInt(parser.summary.colnumber) - 1, parserData);
-            console.log(summaryRowIndex);
-            const resummary = {};
 
-            if (summaryRowIndex >= 0) {
-                const totalRow = parserData[summaryRowIndex];
-                tableheaders.forEach((element, index) => {
-                    resummary[element] = totalRow[index] === parser.summary.text ? '-' : totalRow[index];
-                });
-            } else {
-                console.warn("Summary row not found");
-            }
+                    const tableRow = parseInt(parser.tableData?.row);
+                    const tableCols = parseInt(parser.tableData?.col);
+                    let table = [];
+                    let tableheaders = [];
 
-            responseData.resummary = resummary;
-
-            setTimeout(() => {
-                fs.unlink(filePath, (err) => {
-                    if (err) {
-                        console.error('Error deleting file:', err);
-                        return;
+                    if (!isNaN(tableRow) && !isNaN(tableCols) && tableRow > 0 && tableCols > 0) {
+                        for (let i = tableRow - 1; i < parserData.length; i++) {
+                            if (checkifFullRowisNull(parserData[i])) break;
+                            table.push(parserData[i]);
+                        }
+                        tableheaders = parserData[tableRow - 1] || [];
+                    } else {
+                        console.log("Invalid table row or column numbers");
                     }
 
-                    console.log(`Deleted ${filePath}`);
-                });
-            }, 5 * 60 * 1000); // 5 minutes
+                    responseData[parser.tableData?.name] = table;
 
-            fileCounter++;
-            return res.json({ success: true, responseData });
+                    const summaryRowIndex = findRow(parser.summary.text, parseInt(parser.summary.colnumber) - 1, parserData);
+                    console.log(summaryRowIndex);
+                    const resummary = {};
 
+                    if (summaryRowIndex >= 0) {
+                        const totalRow = parserData[summaryRowIndex];
+                        tableheaders.forEach((element, index) => {
+                            resummary[element] = totalRow[index] === parser.summary.text ? '-' : totalRow[index];
+                        });
+                    } else {
+                        console.warn("Summary row not found");
+                    }
+
+                    responseData.resummary = resummary;
+
+                    setTimeout(() => {
+                        fs.unlink(filePath, (err) => {
+                            if (err) {
+                                console.error('Error deleting file:', err);
+                                return;
+                            }
+            
+                            console.log(`Deleted ${filePath}`);
+                        });
+                    }, 5 * 60 * 1000); // 5 minutes
+
+                    fileCounter ++;
+                    return res.json({ success: true, responseData });
+
+                } else {
+                    return res.json({ success: false, message: "Error in parsing excel file" });
+                }
+
+            } else {
+                return res.json({ success: false, message: "File is Empty" });
+            }
         } else {
-            return res.status(500).json({ success: false, message: "Error in parsing Excel file" });
+            return res.json({ success: false, message: "Parser Not Found Invalid Parser Id" });
         }
-
     } catch (error) {
-        console.error("Error processing Excel file:", error);
-        return res.status(500).json({ success: false, error: 'Failed to process Excel file' });
+        console.error("Error processing Excel file:", error.message);
+        return res.status(500).json({ error: 'Failed to process Excel file' });
     }
 });
+
 
 function checkifFullRowisNull(arr) {
     return arr.every(element => element == null);
