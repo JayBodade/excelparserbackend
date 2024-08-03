@@ -36,7 +36,7 @@ app.get('/', (req, res) => {
 app.post('/uploadexcel', async (req, res) => {
     try {
         const { url, template_Id } = req.body;
-
+        console.log(url,template_Id);
         if (!url || !template_Id) {
             return res.status(400).json({ success: false, message: "Missing URL or template ID" });
         }
