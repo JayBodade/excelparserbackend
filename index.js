@@ -26,7 +26,7 @@ function authUser() {
     })
 }
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => {
     return res.status(200).json("welcome to excel parser backend");
@@ -35,7 +35,7 @@ app.get('/', (req, res) => {
 app.post('/uploadexcel', async (req, res) => {
     try {
         const { url, template_Id } = req.body;
-
+        console.log(Date.now());
         if (!url || !template_Id) {
             return res.status(400).json({ success: false, message: "Missing URL or template ID" });
         }
@@ -85,11 +85,16 @@ app.post('/uploadexcel', async (req, res) => {
             let tableheaders = [];
 
             if (!isNaN(tableRow) && !isNaN(tableCols) && tableRow > 0 && tableCols > 0) {
-                for (let i = tableRow - 1; i < parserData.length; i++) {
-                    if (checkifFullRowisNull(parserData[i])) break;
-                    table.push(parserData[i]);
-                }
                 tableheaders = parserData[tableRow - 1] || [];
+                for (let i = tableRow ; i < parserData.length; i++) {
+                    
+                    if (checkifFullRowisNull(parserData[i])) break;
+                    else {
+                        let obj = forObjectFromData(tableheaders,parserData[i]);
+                        table.push(obj);
+                    }
+                }
+               
             } else {
                 console.log("Invalid table row or column numbers");
             }
@@ -146,6 +151,18 @@ function findRow(searchText, colIndex, data) {
         }
     }
     return -1;
+}
+
+function forObjectFromData(headers,data){
+
+    let obj = {};
+    
+    for (let i = 0; i < headers.length; i++) {
+        obj[headers[i]] = data[i] !== undefined ? data[i] : null;
+    }
+
+    return obj;
+
 }
 
 
